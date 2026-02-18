@@ -1,6 +1,6 @@
 {
   "name": "@b3-crow/npm-sdk-template",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "A ready-to-go TypeScript/JavaScript SDK package starter, with linting, testing, build & publish workflows included.",
   "main": "dist/index.js",
   "type": "module",
