@@ -1,0 +1,174 @@
+name: Publish PR Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-preview-shared-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+jobs:
+  publish-preview:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Get package name
+        id: package
+        run: |
+          package_name=$(jq -r '.name' package.json)
+          echo "name=$package_name" >> $GITHUB_OUTPUT
+          echo "Package name: $package_name"
+
+      - name: Create preview version
+        id: preview_version
+        run: |
+          package_name="${{ steps.package.outputs.name }}"
+          current=$(jq -r '.version' package.json)
+          echo "Current version: $current"
+
+          base_version=$(echo "$current" | sed 's/[-+].*$//')
+          pr_number="${{ github.event.pull_request.number }}"
+
+          if versions=$(npm view "$package_name" versions --json 2>&1); then
+            echo "Retrieved versions from npm registry"
+
+            # Parse count with error capture
+            if ! count=$(echo "$versions" | jq --arg pr_num "$pr_number" '[if . == null then [] else (if type == "array" then . else [.] end) end | .[] | select(test("-pr" + $pr_num + "\\."))] | length' 2>&1); then
+              echo "Error: Failed to parse versions with jq"
+              echo "jq output: $count"
+              exit 1
+            fi
+
+            # Validate count is a non-negative integer
+            if ! [[ "$count" =~ ^[0-9]+$ ]]; then
+              echo "Error: Invalid count value: '$count'"
+              echo "Raw versions data:"
+              echo "$versions"
+              exit 1
+            fi
+
+            echo "Found $count existing preview version(s) for PR #$pr_number"
+          else
+            echo "Package not yet published to npm registry"
+            count=0
+          fi
+
+          build_number=$((count + 1))
+          preview_version="${base_version}-pr${pr_number}.${build_number}"
+          echo "Preview version: $preview_version"
+
+          npm version "$preview_version" --no-git-tag-version
+
+          echo "version=$preview_version" >> $GITHUB_OUTPUT
+
+      - name: Build
+        run: bun run build
+
+      - name: Publish to npm with preview tag
+        run: |
+          package_name="${{ steps.package.outputs.name }}"
+          bunx npm publish --tag pr-preview --no-git-checks 2>&1
+          publish_exit_code=$?
+
+          if [ "$publish_exit_code" -eq 0 ]; then
+            echo "Successfully published ${{ steps.preview_version.outputs.version }}"
+          else
+            if npm view "${package_name}@${{ steps.preview_version.outputs.version }}" version &>/dev/null; then
+              echo "Version ${{ steps.preview_version.outputs.version }} already exists - skipping publish"
+              exit 0
+            else
+              echo "Publish failed with exit code $publish_exit_code"
+              exit "$publish_exit_code"
+            fi
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const packageName = '${{ steps.package.outputs.name }}';
+            const version = '${{ steps.preview_version.outputs.version }}';
+            const comment = `## Preview Package Published
+
+            A preview version of this package has been published to npm!
+
+            **Version:** \`${version}\`
+            **Tag:** \`pr-preview\`
+
+            ### Install this specific commit
+            \`\`\`bash
+            npm install ${packageName}@${version}
+            # or
+            bun add ${packageName}@${version}
+            # or
+            yarn add ${packageName}@${version}
+            \`\`\`
+
+            ### Install latest commit from this PR
+            \`\`\`bash
+            npm install ${packageName}@pr-preview
+            # or
+            bun add ${packageName}@pr-preview
+            # or
+            yarn add ${packageName}@pr-preview
+            \`\`\`
+
+            > **Note:** Each commit gets a unique preview version. The \`pr-preview\` tag always points to the latest preview. All preview versions for this PR will be automatically cleaned up when the PR is closed.`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment => {
+              const isBot = comment.user.type === 'Bot' ||
+                            comment.user.login === 'github-actions[bot]' ||
+                            comment.user.login.toLowerCase().includes('bot');
+              return isBot && comment.body.includes('Preview Package Published');
+            });
+
+            // Update or create comment
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }

@@ -1,0 +1,169 @@
+name: Cleanup PR Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [closed]
+
+concurrency:
+  group: pr-preview-shared-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup-preview:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Get package name
+        id: package
+        run: |
+          package_name=$(jq -r '.name' package.json)
+          echo "name=$package_name" >> $GITHUB_OUTPUT
+          echo "Package name: $package_name"
+
+      - name: Find preview versions to clean up
+        id: versions
+        run: |
+          package_name="${{ steps.package.outputs.name }}"
+          pr_number="${{ github.event.pull_request.number }}"
+          echo "Finding all preview versions for PR #$pr_number"
+
+          if versions=$(npm view "$package_name" versions --json 2>/dev/null); then
+            preview_versions=$(echo "$versions" | jq -r --arg pr_num "$pr_number" 'if . == null then [] else (if type == "array" then . else [.] end) end | .[] | select(test("-pr" + $pr_num + "\\."))' 2>/dev/null || echo "")
+
+            if [ -z "$preview_versions" ]; then
+              echo "No preview versions found for PR #$pr_number"
+              echo "versions=" >> $GITHUB_OUTPUT
+            else
+              echo "Found preview versions:"
+              echo "$preview_versions"
+              echo "versions<<EOF" >> $GITHUB_OUTPUT
+              echo "$preview_versions" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Could not fetch package versions from npm"
+            echo "versions=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Unpublish or deprecate preview versions
+        run: |
+          package_name="${{ steps.package.outputs.name }}"
+          preview_versions="${{ steps.versions.outputs.versions }}"
+
+          if [ -z "$preview_versions" ]; then
+            echo "No preview versions to clean up"
+            exit 0
+          fi
+
+          # Read versions into array
+          mapfile -t versions_array <<< "$preview_versions"
+
+          success_count=0
+          failure_count=0
+          failed_versions=()
+
+          for preview_version in "${versions_array[@]}"; do
+            if [ -z "$preview_version" ]; then
+              continue
+            fi
+
+            version="${package_name}@$preview_version"
+            echo "Attempting to unpublish $version"
+
+            if npm unpublish "$version" 2>&1; then
+              echo "Successfully unpublished $version"
+              success_count=$((success_count + 1))
+            else
+              echo "Unpublish failed - attempting to deprecate instead"
+              if npm deprecate "$version" "This PR preview version is no longer needed and should not be used." 2>&1; then
+                echo "Successfully deprecated $version"
+                success_count=$((success_count + 1))
+              else
+                echo "Failed to unpublish or deprecate $version"
+                failure_count=$((failure_count + 1))
+                failed_versions+=("$version")
+              fi
+            fi
+          done
+
+          echo ""
+          echo "Cleanup summary:"
+          echo "  Successfully processed: $success_count"
+          echo "  Failed: $failure_count"
+
+          if [ $failure_count -gt 0 ]; then
+            echo "Failed versions:"
+            printf '  - %s\n' "${failed_versions[@]}"
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Cleanup pr-preview tag if needed
+        run: |
+          package_name="${{ steps.package.outputs.name }}"
+          pr_number="${{ github.event.pull_request.number }}"
+
+          if versions=$(npm view "$package_name" versions --json 2>&1); then
+            # Count preview versions from OTHER PRs (excluding current PR)
+            # This is defensive in case unpublish had partial failures
+            if ! preview_count=$(echo "$versions" | jq --arg pr_num "$pr_number" '
+              if . == null then
+                []
+              else
+                (if type == "array" then . else [.] end)
+              end
+              | map(select(test("-pr[0-9]+\\.") and (test("-pr" + $pr_num + "\\.") | not)))
+              | length
+            ' 2>&1); then
+              echo "Error: Failed to parse versions with jq"
+              echo "jq output: $preview_count"
+              exit 1
+            fi
+
+            # Validate count is a non-negative integer
+            if ! [[ "$preview_count" =~ ^[0-9]+$ ]]; then
+              echo "Error: Invalid preview_count value: '$preview_count'"
+              echo "Raw versions data:"
+              echo "$versions"
+              exit 1
+            fi
+          else
+            echo "Could not fetch package versions from npm"
+            preview_count="0"
+          fi
+
+          echo "Remaining preview versions from other PRs: $preview_count"
+
+          if [ "$preview_count" -eq 0 ]; then
+            echo "No remaining preview versions; checking for pr-preview dist-tag to clean up"
+            if npm dist-tag ls "$package_name" 2>/dev/null | grep -q '^pr-preview:'; then
+              echo "pr-preview dist-tag found; attempting to remove it"
+              if npm dist-tag rm "$package_name" pr-preview 2>&1; then
+                echo "Successfully removed pr-preview dist-tag for $package_name"
+              else
+                echo "Failed to remove pr-preview dist-tag for $package_name (it may have been removed already)"
+              fi
+            else
+              echo "No pr-preview dist-tag found for $package_name; nothing to clean up"
+            fi
+          else
+            echo "Preview versions still exist; keeping pr-preview dist-tag (if present)"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
