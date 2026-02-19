@@ -1,5 +1,4 @@
 import type { ChildProcess } from 'node:child_process';
-import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 
@@ -89,7 +88,7 @@ function spawnVideoCapture(
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
 
-  let frameBuffer = Buffer.alloc(0);
+  let frameBuffer: Buffer = Buffer.alloc(0);
 
   videoProcess.stdout.on('data', (chunk: Buffer) => {
     frameBuffer = Buffer.concat([frameBuffer, chunk]);
@@ -125,7 +124,7 @@ function spawnAudioCapture(
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
 
-  let audioBuffer = Buffer.alloc(0);
+  let audioBuffer: Buffer = Buffer.alloc(0);
 
   audioProcess.stdout.on('data', (chunk: Buffer) => {
     audioBuffer = Buffer.concat([audioBuffer, chunk]);
