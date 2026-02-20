@@ -1,6 +1,6 @@
 {
   "name": "@b3-crow/cctv-cli",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "CLI tool for capturing and streaming CCTV video+audio to the ingest service",
   "main": "dist/index.js",
   "type": "module",
