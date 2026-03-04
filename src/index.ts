@@ -1,30 +1,18 @@
 #!/usr/bin/env bun
 import { program } from 'commander';
-import { listCommand } from './commands/list';
-import { streamCommand } from './commands/stream';
+import { grabAction } from './commands/grab';
 
 program
   .name('cctv')
-  .description('CROW CCTV CLI — capture and stream video+audio for analysis')
-  .version('0.0.1');
+  .description('CROW CCTV Edge Ingest Gateway CLI')
+  .version('0.1.0');
 
 program
-  .command('list')
-  .description('List available camera devices')
-  .action(listCommand);
-
-program
-  .command('stream')
-  .description('Stream video+audio to the ingest service')
-  .option(
-    '-i, --input <source>',
-    'Input source (camera device or video file path)'
-  )
-  .option(
-    '-u, --url <url>',
-    'WebSocket URL of the ingest service',
-    'ws://localhost:8015/ws'
-  )
-  .action(streamCommand);
+  .command('grab')
+  .description('Grab a single RTSP frame via ffmpeg')
+  .requiredOption('--rtsp <url>', 'RTSP stream URL')
+  .option('--out <path>', 'Output file path', 'out.jpg')
+  .option('--timeout <ms>', 'Timeout in milliseconds', '10000')
+  .action(grabAction);
 
 program.parse();
