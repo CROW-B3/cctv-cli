@@ -1,6 +1,11 @@
 store_id: nike_colombo_01
+grid:
+  rows: 2
+  cols: 2
 cameras:
   - id: cam_01
     rtsp: rtsp://192.168.1.100:554/stream
+    grid_position: { row: 0, col: 0 }
   - id: cam_02
     rtsp: rtsp://192.168.1.101:554/stream
+    grid_position: { row: 0, col: 1 }
