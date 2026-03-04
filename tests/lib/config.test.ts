@@ -77,4 +77,86 @@ cameras:
 `);
     await expect(loadStoreConfig('empty-id.yaml')).rejects.toThrow();
   });
+
+  it('parses config with grid + grid_position', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+grid:
+  rows: 2
+  cols: 2
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+    grid_position: { row: 0, col: 0 }
+  - id: cam_b
+    rtsp: rtsp://10.0.0.2/stream
+    grid_position: { row: 0, col: 1 }
+`);
+    const config = await loadStoreConfig('grid.yaml');
+    expect(config.grid).toEqual({ rows: 2, cols: 2 });
+    expect(config.cameras[0].grid_position).toEqual({ row: 0, col: 0 });
+    expect(config.cameras[1].grid_position).toEqual({ row: 0, col: 1 });
+  });
+
+  it('parses config without grid (backwards compat)', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+`);
+    const config = await loadStoreConfig('no-grid.yaml');
+    expect(config.grid).toBeUndefined();
+    expect(config.cameras[0].grid_position).toBeUndefined();
+  });
+
+  it('throws on duplicate grid_position', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+grid:
+  rows: 2
+  cols: 2
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+    grid_position: { row: 0, col: 0 }
+  - id: cam_b
+    rtsp: rtsp://10.0.0.2/stream
+    grid_position: { row: 0, col: 0 }
+`);
+    await expect(loadStoreConfig('dup-pos.yaml')).rejects.toThrow(
+      /Duplicate grid_position/
+    );
+  });
+
+  it('throws on grid_position out of bounds', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+grid:
+  rows: 1
+  cols: 1
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+    grid_position: { row: 1, col: 0 }
+`);
+    await expect(loadStoreConfig('oob-pos.yaml')).rejects.toThrow(
+      /out of bounds/
+    );
+  });
+
+  it('throws when grid defined but camera missing grid_position', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+grid:
+  rows: 2
+  cols: 2
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+`);
+    await expect(loadStoreConfig('missing-pos.yaml')).rejects.toThrow(
+      /missing grid_position/
+    );
+  });
 });

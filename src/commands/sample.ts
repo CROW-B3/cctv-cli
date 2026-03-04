@@ -4,8 +4,10 @@ import process from 'node:process';
 
 import chalk from 'chalk';
 
+import { compositeFrames } from '../lib/compositor';
 import { loadStoreConfig } from '../lib/config';
 import { startSampler } from '../lib/sampler';
+import { bucketSec } from '../lib/types';
 
 interface SampleOptions {
   store?: string;
@@ -103,8 +105,40 @@ async function runMultiCamera(
     handles.push({ cameraId: cam.id, handle });
   }
 
+  // Start composite loop if grid is configured
+  let compositeInterval: ReturnType<typeof setInterval> | null = null;
+  if (config.grid) {
+    const intervalMs = 1000 / fps;
+    // Delay slightly after bucket boundary to let grabs complete
+    const compositeDelay = Math.min(200, intervalMs * 0.8);
+    let lastCompositeBucket = 0;
+
+    compositeInterval = setInterval(async () => {
+      const bucket = bucketSec();
+      if (bucket === lastCompositeBucket) return;
+      lastCompositeBucket = bucket;
+
+      // Wait a bit for grabs to finish writing
+      await new Promise(r => setTimeout(r, compositeDelay));
+
+      try {
+        await compositeFrames({
+          storeId: config.store_id,
+          bucketSec: bucket,
+          cameras: config.cameras,
+          grid: config.grid!,
+          spoolDir: opts.spool,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[composite] failed (bucket=${bucket}): ${msg}`);
+      }
+    }, intervalMs);
+  }
+
   const shutdown = () => {
     console.log(chalk.yellow('\nStopping all samplers…'));
+    if (compositeInterval) clearInterval(compositeInterval);
     for (const { handle } of handles) {
       handle.stop();
     }
@@ -118,6 +152,11 @@ async function runMultiCamera(
       `Sampling ${config.cameras.length} camera(s) for store ${config.store_id} at ${fps} FPS → ${opts.spool}/`
     )
   );
+  if (config.grid) {
+    console.log(
+      chalk.blue(`  Compositing: ${config.grid.rows}×${config.grid.cols} grid`)
+    );
+  }
   for (const cam of config.cameras) {
     console.log(chalk.blue(`  ${cam.id}: ${cam.rtsp}`));
   }

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { program } from 'commander';
+import { compositeAction } from './commands/composite';
 import { grabAction } from './commands/grab';
 import { sampleAction } from './commands/sample';
 
@@ -28,5 +29,21 @@ program
   .option('--timeout <ms>', 'Per-grab timeout in milliseconds', '10000')
   .option('--ingest <url>', 'Ingest service URL (e.g. http://localhost:3000)')
   .action(sampleAction);
+
+program
+  .command('composite')
+  .description('Composite spooled camera frames into a mosaic JPEG')
+  .requiredOption(
+    '--config <path>',
+    'YAML config file with store + cameras + grid'
+  )
+  .requiredOption(
+    '--bucket <sec>',
+    'Bucket timestamp (epoch seconds) to composite'
+  )
+  .option('--spool <path>', 'Spool directory root', './spool')
+  .option('--tile-width <px>', 'Tile width in pixels', '320')
+  .option('--tile-height <px>', 'Tile height in pixels', '240')
+  .action(compositeAction);
 
 program.parse();
