@@ -236,7 +236,7 @@ export function aggregateStats(statsList: SamplerStats[]): SamplerStats {
       uploadErrors: 0,
       hqGrabbed: 0,
       motionEvents: 0,
-      startedAt: Infinity,
+      startedAt: Date.now(),
     }
   );
 }

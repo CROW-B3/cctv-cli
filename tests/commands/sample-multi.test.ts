@@ -162,7 +162,7 @@ describe('aggregateStats', () => {
     expect(agg.errors).toBe(0);
     expect(agg.hqGrabbed).toBe(0);
     expect(agg.motionEvents).toBe(0);
-    expect(agg.startedAt).toBe(Infinity);
+    expect(agg.startedAt).toBeLessThanOrEqual(Date.now());
   });
 
   it('aggregates hqGrabbed and motionEvents', () => {
