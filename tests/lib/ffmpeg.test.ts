@@ -11,7 +11,7 @@ vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
 }));
 
-const mockSpawn = vi.mocked(spawn);
+const mockSpawn = spawn as unknown as ReturnType<typeof vi.fn>;
 
 function createMockProc(): ChildProcess {
   const proc = new EventEmitter() as ChildProcess;
