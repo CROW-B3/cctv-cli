@@ -28,6 +28,7 @@ program
   .option('--fps <n>', 'Frames per second (0 < fps ≤ 30)', '1')
   .option('--timeout <ms>', 'Per-grab timeout in milliseconds', '10000')
   .option('--ingest <url>', 'Ingest service URL (e.g. http://localhost:3000)')
+  .option('--motion <mode>', 'Motion gating mode: "onvif" or "simulate"')
   .action(sampleAction);
 
 program
