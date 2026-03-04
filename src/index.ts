@@ -19,9 +19,10 @@ program
 program
   .command('sample')
   .description('Continuously sample RTSP frames to a local spool')
-  .requiredOption('--store <id>', 'Store identifier')
-  .requiredOption('--camera <id>', 'Camera identifier')
-  .requiredOption('--rtsp <url>', 'RTSP stream URL')
+  .option('--config <path>', 'YAML config file with store + cameras')
+  .option('--store <id>', 'Store identifier (single-camera mode)')
+  .option('--camera <id>', 'Camera identifier (single-camera mode)')
+  .option('--rtsp <url>', 'RTSP stream URL (single-camera mode)')
   .option('--spool <path>', 'Spool directory root', './spool')
   .option('--fps <n>', 'Frames per second (0 < fps ≤ 30)', '1')
   .option('--timeout <ms>', 'Per-grab timeout in milliseconds', '10000')

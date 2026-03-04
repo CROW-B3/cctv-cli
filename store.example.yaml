@@ -1,0 +1,6 @@
+store_id: nike_colombo_01
+cameras:
+  - id: cam_01
+    rtsp: rtsp://192.168.1.100:554/stream
+  - id: cam_02
+    rtsp: rtsp://192.168.1.101:554/stream
