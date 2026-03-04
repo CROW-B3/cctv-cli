@@ -11,6 +11,7 @@ interface SampleOptions {
   spool: string;
   fps: string;
   timeout: string;
+  ingest?: string;
 }
 
 export async function sampleAction(opts: SampleOptions): Promise<void> {
@@ -35,6 +36,7 @@ export async function sampleAction(opts: SampleOptions): Promise<void> {
     rtspUrl: opts.rtsp,
     fps,
     timeoutMs,
+    ingestUrl: opts.ingest,
   });
 
   const shutdown = () => {
@@ -45,18 +47,20 @@ export async function sampleAction(opts: SampleOptions): Promise<void> {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  console.log(
-    chalk.blue(
-      `Sampling ${opts.rtsp} at ${fps} FPS → ${opts.spool}/${opts.store}/${opts.camera}/`
-    )
-  );
+  const target = opts.ingest
+    ? `${opts.spool}/…/ + ${opts.ingest}`
+    : `${opts.spool}/${opts.store}/${opts.camera}/`;
+  console.log(chalk.blue(`Sampling ${opts.rtsp} at ${fps} FPS → ${target}`));
 
   const stats = await handle.done;
 
+  const duration = ((Date.now() - stats.startedAt) / 1000).toFixed(1);
+  const uploadInfo = opts.ingest
+    ? `, uploaded: ${stats.uploaded}, uploadErrors: ${stats.uploadErrors}`
+    : '';
   console.log(
     chalk.green(
-      `Done — grabbed: ${stats.grabbed}, errors: ${stats.errors}, ` +
-        `duration: ${((Date.now() - stats.startedAt) / 1000).toFixed(1)}s`
+      `Done — grabbed: ${stats.grabbed}, errors: ${stats.errors}${uploadInfo}, duration: ${duration}s`
     )
   );
 }

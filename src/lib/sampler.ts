@@ -3,16 +3,20 @@ import type { SpoolConfig } from './spool';
 import { grabFrame } from './ffmpeg';
 import { ensureSpoolDir, spoolPath } from './spool';
 import { bucketSec } from './types';
+import { uploadFrame } from './uploader';
 
 export interface SamplerConfig extends SpoolConfig {
   rtspUrl: string;
   fps: number;
   timeoutMs: number;
+  ingestUrl?: string;
 }
 
 export interface SamplerStats {
   grabbed: number;
   errors: number;
+  uploaded: number;
+  uploadErrors: number;
   startedAt: number;
 }
 
@@ -44,7 +48,13 @@ async function runLoop(
   const intervalMs = 1000 / config.fps;
   const anchor = Date.now();
   let tickIndex = 0;
-  const stats: SamplerStats = { grabbed: 0, errors: 0, startedAt: anchor };
+  const stats: SamplerStats = {
+    grabbed: 0,
+    errors: 0,
+    uploaded: 0,
+    uploadErrors: 0,
+    startedAt: anchor,
+  };
 
   while (isRunning()) {
     tickIndex++;
@@ -59,6 +69,28 @@ async function runLoop(
         timeoutMs: config.timeoutMs,
       });
       stats.grabbed++;
+
+      if (config.ingestUrl) {
+        try {
+          await uploadFrame(
+            config.ingestUrl,
+            {
+              store_id: config.storeId,
+              camera_id: config.cameraId,
+              bucket_sec: bucket,
+              quality: 'low',
+              content_type: 'image/jpeg',
+            },
+            outPath
+          );
+          stats.uploaded++;
+        } catch (uploadErr) {
+          stats.uploadErrors++;
+          const msg =
+            uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+          console.warn(`[sampler] upload failed (bucket=${bucket}): ${msg}`);
+        }
+      }
     } catch (err) {
       stats.errors++;
       const msg = err instanceof Error ? err.message : String(err);
