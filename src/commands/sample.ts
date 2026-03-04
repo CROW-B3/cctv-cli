@@ -1,3 +1,4 @@
+import type { MotionMode, MotionWatcher } from '../lib/motion';
 import type { SamplerHandle, SamplerStats } from '../lib/sampler';
 
 import process from 'node:process';
@@ -6,6 +7,7 @@ import chalk from 'chalk';
 
 import { compositeFrames } from '../lib/compositor';
 import { loadStoreConfig } from '../lib/config';
+import { createMotionWatcher } from '../lib/motion';
 import { startSampler } from '../lib/sampler';
 import { bucketSec } from '../lib/types';
 
@@ -18,6 +20,7 @@ interface SampleOptions {
   timeout: string;
   ingest?: string;
   config?: string;
+  motion?: string;
 }
 
 export async function sampleAction(opts: SampleOptions): Promise<void> {
@@ -56,6 +59,13 @@ async function runSingleCamera(
     process.exit(1);
   }
 
+  const motionMode = (opts.motion ?? 'off') as MotionMode;
+  const watcher = createMotionWatcher(motionMode, {
+    cameraId: opts.camera,
+    ttlMs: 2000,
+  });
+  if (watcher) await watcher.start();
+
   const handle = startSampler({
     spoolDir: opts.spool,
     storeId: opts.store,
@@ -64,10 +74,12 @@ async function runSingleCamera(
     fps,
     timeoutMs,
     ingestUrl: opts.ingest,
+    motionWatcher: watcher,
   });
 
   const shutdown = () => {
     console.log(chalk.yellow('\nStopping sampler…'));
+    watcher?.stop();
     handle.stop();
   };
 
@@ -90,9 +102,28 @@ async function runMultiCamera(
 ): Promise<void> {
   const config = await loadStoreConfig(opts.config!);
 
+  // Determine motion mode: CLI flag overrides config
+  const motionMode: MotionMode = opts.motion
+    ? (opts.motion as MotionMode)
+    : config.motion?.enabled
+      ? 'onvif'
+      : 'off';
+  const ttlMs = (config.motion?.ttl_seconds ?? 2) * 1000;
+
+  const watchers: MotionWatcher[] = [];
   const handles: { cameraId: string; handle: SamplerHandle }[] = [];
 
   for (const cam of config.cameras) {
+    const watcher = createMotionWatcher(motionMode, {
+      cameraId: cam.id,
+      onvifUrl: cam.onvif_url,
+      ttlMs,
+    });
+    if (watcher) {
+      await watcher.start();
+      watchers.push(watcher);
+    }
+
     const handle = startSampler({
       spoolDir: opts.spool,
       storeId: config.store_id,
@@ -101,6 +132,7 @@ async function runMultiCamera(
       fps,
       timeoutMs,
       ingestUrl: opts.ingest,
+      motionWatcher: watcher,
     });
     handles.push({ cameraId: cam.id, handle });
   }
@@ -139,6 +171,7 @@ async function runMultiCamera(
   const shutdown = () => {
     console.log(chalk.yellow('\nStopping all samplers…'));
     if (compositeInterval) clearInterval(compositeInterval);
+    for (const w of watchers) w.stop();
     for (const { handle } of handles) {
       handle.stop();
     }
@@ -192,6 +225,8 @@ export function aggregateStats(statsList: SamplerStats[]): SamplerStats {
       errors: acc.errors + s.errors,
       uploaded: acc.uploaded + s.uploaded,
       uploadErrors: acc.uploadErrors + s.uploadErrors,
+      hqGrabbed: acc.hqGrabbed + s.hqGrabbed,
+      motionEvents: acc.motionEvents + s.motionEvents,
       startedAt: Math.min(acc.startedAt, s.startedAt),
     }),
     {
@@ -199,6 +234,8 @@ export function aggregateStats(statsList: SamplerStats[]): SamplerStats {
       errors: 0,
       uploaded: 0,
       uploadErrors: 0,
+      hqGrabbed: 0,
+      motionEvents: 0,
       startedAt: Infinity,
     }
   );
@@ -209,9 +246,13 @@ function printStats(stats: SamplerStats, ingestUrl?: string): void {
   const uploadInfo = ingestUrl
     ? `, uploaded: ${stats.uploaded}, uploadErrors: ${stats.uploadErrors}`
     : '';
+  const motionInfo =
+    stats.hqGrabbed > 0 || stats.motionEvents > 0
+      ? `, hqGrabbed: ${stats.hqGrabbed}, motionEvents: ${stats.motionEvents}`
+      : '';
   console.log(
     chalk.green(
-      `Done — grabbed: ${stats.grabbed}, errors: ${stats.errors}${uploadInfo}, duration: ${duration}s`
+      `Done — grabbed: ${stats.grabbed}, errors: ${stats.errors}${uploadInfo}${motionInfo}, duration: ${duration}s`
     )
   );
 }

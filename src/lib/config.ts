@@ -16,11 +16,18 @@ const GridSchema = z.object({
 const CameraSchema = z.object({
   id: z.string().min(1, 'Camera id must not be empty'),
   rtsp: z.string().min(1, 'Camera rtsp URL must not be empty'),
+  onvif_url: z.string().optional(),
   grid_position: GridPositionSchema.optional(),
+});
+
+const MotionConfigSchema = z.object({
+  enabled: z.boolean(),
+  ttl_seconds: z.number().min(0.1).max(30).default(2),
 });
 
 const BaseStoreConfigSchema = z.object({
   store_id: z.string().min(1, 'store_id must not be empty'),
+  motion: MotionConfigSchema.optional(),
   grid: GridSchema.optional(),
   cameras: z.array(CameraSchema).min(1, 'At least one camera is required'),
 });

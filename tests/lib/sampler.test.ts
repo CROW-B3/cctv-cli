@@ -1,3 +1,4 @@
+import type { MotionWatcher } from '../../src/lib/motion';
 import type { SamplerConfig } from '../../src/lib/sampler';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -169,5 +170,104 @@ describe('startSampler', () => {
     expect(stats.grabbed).toBeGreaterThanOrEqual(2);
     expect(stats.uploadErrors).toBe(1);
     expect(stats.uploaded).toBeGreaterThanOrEqual(1);
+  });
+
+  it('grabs HQ frame when motion watcher is hot', async () => {
+    const mockWatcher: MotionWatcher = {
+      isHot: () => true,
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn(),
+      eventCount: 3,
+    };
+
+    const handle = startSampler({
+      ...baseConfig,
+      motionWatcher: mockWatcher,
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    handle.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    const stats = await handle.done;
+
+    expect(stats.hqGrabbed).toBeGreaterThanOrEqual(1);
+    // Verify HQ path was requested (quality 'high')
+    const highCalls = mockSpoolPath.mock.calls.filter(
+      (c: unknown[]) => c[2] === 'high'
+    );
+    expect(highCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not grab HQ when motion watcher is cold', async () => {
+    const mockWatcher: MotionWatcher = {
+      isHot: () => false,
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn(),
+      eventCount: 0,
+    };
+
+    const handle = startSampler({
+      ...baseConfig,
+      motionWatcher: mockWatcher,
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    handle.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    const stats = await handle.done;
+
+    expect(stats.hqGrabbed).toBe(0);
+    const highCalls = mockSpoolPath.mock.calls.filter(
+      (c: unknown[]) => c[2] === 'high'
+    );
+    expect(highCalls.length).toBe(0);
+  });
+
+  it('does not grab HQ when no motion watcher set', async () => {
+    const handle = startSampler(baseConfig);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    handle.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    const stats = await handle.done;
+
+    expect(stats.hqGrabbed).toBe(0);
+    expect(stats.motionEvents).toBe(0);
+  });
+
+  it('hQ grab failure does not stop sampling', async () => {
+    const mockWatcher: MotionWatcher = {
+      isHot: () => true,
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn(),
+      eventCount: 2,
+    };
+
+    // First grab succeeds (low-res), second fails (HQ), third succeeds (low-res tick 2)
+    mockGrab
+      .mockResolvedValueOnce({ outPath: 'mock.jpg', durationMs: 50 }) // low tick 1
+      .mockRejectedValueOnce(new Error('HQ grab timeout')) // high tick 1
+      .mockResolvedValueOnce({ outPath: 'mock.jpg', durationMs: 50 }) // low tick 2
+      .mockResolvedValueOnce({ outPath: 'mock.jpg', durationMs: 50 }); // high tick 2
+
+    const handle = startSampler({
+      ...baseConfig,
+      motionWatcher: mockWatcher,
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    handle.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    const stats = await handle.done;
+
+    expect(stats.grabbed).toBeGreaterThanOrEqual(2);
+    expect(stats.errors).toBe(0); // HQ failures don't count as errors
+    expect(stats.hqGrabbed).toBeGreaterThanOrEqual(1);
+    expect(stats.motionEvents).toBe(2);
   });
 });

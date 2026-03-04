@@ -159,4 +159,54 @@ cameras:
       /missing grid_position/
     );
   });
+
+  it('parses motion config', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+motion:
+  enabled: true
+  ttl_seconds: 5
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+`);
+    const config = await loadStoreConfig('motion.yaml');
+    expect(config.motion).toEqual({ enabled: true, ttl_seconds: 5 });
+  });
+
+  it('motion config is optional (backwards compat)', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+`);
+    const config = await loadStoreConfig('no-motion.yaml');
+    expect(config.motion).toBeUndefined();
+  });
+
+  it('rejects invalid ttl_seconds (out of range)', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+motion:
+  enabled: true
+  ttl_seconds: 100
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+`);
+    await expect(loadStoreConfig('bad-ttl.yaml')).rejects.toThrow();
+  });
+
+  it('parses onvif_url on camera', async () => {
+    mockRead.mockResolvedValue(`
+store_id: shop_01
+cameras:
+  - id: cam_a
+    rtsp: rtsp://10.0.0.1/stream
+    onvif_url: http://10.0.0.1:80
+`);
+    const config = await loadStoreConfig('onvif.yaml');
+    expect(config.cameras[0].onvif_url).toBe('http://10.0.0.1:80');
+  });
 });

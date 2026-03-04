@@ -117,6 +117,8 @@ describe('aggregateStats', () => {
         errors: 1,
         uploaded: 9,
         uploadErrors: 0,
+        hqGrabbed: 0,
+        motionEvents: 0,
         startedAt: 1000,
       },
       {
@@ -124,6 +126,8 @@ describe('aggregateStats', () => {
         errors: 2,
         uploaded: 7,
         uploadErrors: 1,
+        hqGrabbed: 0,
+        motionEvents: 0,
         startedAt: 1100,
       },
     ]);
@@ -137,7 +141,15 @@ describe('aggregateStats', () => {
 
   it('handles single camera stats', () => {
     const agg = aggregateStats([
-      { grabbed: 5, errors: 0, uploaded: 5, uploadErrors: 0, startedAt: 500 },
+      {
+        grabbed: 5,
+        errors: 0,
+        uploaded: 5,
+        uploadErrors: 0,
+        hqGrabbed: 0,
+        motionEvents: 0,
+        startedAt: 500,
+      },
     ]);
 
     expect(agg.grabbed).toBe(5);
@@ -148,6 +160,34 @@ describe('aggregateStats', () => {
     const agg = aggregateStats([]);
     expect(agg.grabbed).toBe(0);
     expect(agg.errors).toBe(0);
+    expect(agg.hqGrabbed).toBe(0);
+    expect(agg.motionEvents).toBe(0);
     expect(agg.startedAt).toBe(Infinity);
+  });
+
+  it('aggregates hqGrabbed and motionEvents', () => {
+    const agg = aggregateStats([
+      {
+        grabbed: 10,
+        errors: 0,
+        uploaded: 10,
+        uploadErrors: 0,
+        hqGrabbed: 5,
+        motionEvents: 8,
+        startedAt: 1000,
+      },
+      {
+        grabbed: 10,
+        errors: 0,
+        uploaded: 10,
+        uploadErrors: 0,
+        hqGrabbed: 3,
+        motionEvents: 4,
+        startedAt: 1000,
+      },
+    ]);
+
+    expect(agg.hqGrabbed).toBe(8);
+    expect(agg.motionEvents).toBe(12);
   });
 });
