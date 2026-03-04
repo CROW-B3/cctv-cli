@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { program } from 'commander';
 import { grabAction } from './commands/grab';
+import { sampleAction } from './commands/sample';
 
 program
   .name('cctv')
@@ -14,5 +15,16 @@ program
   .option('--out <path>', 'Output file path', 'out.jpg')
   .option('--timeout <ms>', 'Timeout in milliseconds', '10000')
   .action(grabAction);
+
+program
+  .command('sample')
+  .description('Continuously sample RTSP frames to a local spool')
+  .requiredOption('--store <id>', 'Store identifier')
+  .requiredOption('--camera <id>', 'Camera identifier')
+  .requiredOption('--rtsp <url>', 'RTSP stream URL')
+  .option('--spool <path>', 'Spool directory root', './spool')
+  .option('--fps <n>', 'Frames per second (0 < fps ≤ 30)', '1')
+  .option('--timeout <ms>', 'Per-grab timeout in milliseconds', '10000')
+  .action(sampleAction);
 
 program.parse();
