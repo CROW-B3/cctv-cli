@@ -1,30 +1,50 @@
 #!/usr/bin/env bun
 import { program } from 'commander';
-import { listCommand } from './commands/list';
-import { streamCommand } from './commands/stream';
+import { compositeAction } from './commands/composite';
+import { grabAction } from './commands/grab';
+import { sampleAction } from './commands/sample';
 
 program
   .name('cctv')
-  .description('CROW CCTV CLI — capture and stream video+audio for analysis')
-  .version('0.0.1');
+  .description('CROW CCTV Edge Ingest Gateway CLI')
+  .version('0.1.0');
 
 program
-  .command('list')
-  .description('List available camera devices')
-  .action(listCommand);
+  .command('grab')
+  .description('Grab a single RTSP frame via ffmpeg')
+  .requiredOption('--rtsp <url>', 'RTSP stream URL')
+  .option('--out <path>', 'Output file path', 'out.jpg')
+  .option('--timeout <ms>', 'Timeout in milliseconds', '10000')
+  .action(grabAction);
 
 program
-  .command('stream')
-  .description('Stream video+audio to the ingest service')
-  .option(
-    '-i, --input <source>',
-    'Input source (camera device or video file path)'
-  )
-  .option(
-    '-u, --url <url>',
-    'WebSocket URL of the ingest service',
-    'ws://localhost:8015/ws'
-  )
-  .action(streamCommand);
+  .command('sample')
+  .description('Continuously sample RTSP frames to a local spool')
+  .option('--config <path>', 'YAML config file with store + cameras')
+  .option('--store <id>', 'Store identifier (single-camera mode)')
+  .option('--camera <id>', 'Camera identifier (single-camera mode)')
+  .option('--rtsp <url>', 'RTSP stream URL (single-camera mode)')
+  .option('--spool <path>', 'Spool directory root', './spool')
+  .option('--fps <n>', 'Frames per second (0 < fps ≤ 30)', '1')
+  .option('--timeout <ms>', 'Per-grab timeout in milliseconds', '10000')
+  .option('--ingest <url>', 'Ingest service URL (e.g. http://localhost:3000)')
+  .option('--motion <mode>', 'Motion gating mode: "onvif" or "simulate"')
+  .action(sampleAction);
 
-program.parse();
+program
+  .command('composite')
+  .description('Composite spooled camera frames into a mosaic JPEG')
+  .requiredOption(
+    '--config <path>',
+    'YAML config file with store + cameras + grid'
+  )
+  .requiredOption(
+    '--bucket <sec>',
+    'Bucket timestamp (epoch seconds) to composite'
+  )
+  .option('--spool <path>', 'Spool directory root', './spool')
+  .option('--tile-width <px>', 'Tile width in pixels', '320')
+  .option('--tile-height <px>', 'Tile height in pixels', '240')
+  .action(compositeAction);
+
+program.parseAsync();
