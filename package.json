@@ -15,6 +15,8 @@
     "dev": "bun run src/index.ts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format": "bun run prettier src/ --write",
     "prepare": "husky install",
     "lint-staged": "lint-staged"
@@ -40,7 +42,8 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.6.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
