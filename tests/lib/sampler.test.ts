@@ -17,8 +17,15 @@ vi.mock('../../src/lib/spool', () => ({
   ),
 }));
 
+vi.mock('../../src/lib/uploader', () => ({
+  uploadFrame: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
 const mockGrab = vi.mocked(grabFrame);
 const mockSpoolPath = vi.mocked(spoolPath);
+
+const { uploadFrame: mockUpload } = await import('../../src/lib/uploader');
+const mockUploadFrame = vi.mocked(mockUpload);
 
 const baseConfig: SamplerConfig = {
   spoolDir: 'spool',
@@ -105,5 +112,62 @@ describe('startSampler', () => {
     for (const call of mockSpoolPath.mock.calls) {
       expect(call[2]).toBe('low');
     }
+  });
+
+  it('does not upload when ingestUrl is not set', async () => {
+    const handle = startSampler(baseConfig);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    handle.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    const stats = await handle.done;
+
+    expect(mockUploadFrame).not.toHaveBeenCalled();
+    expect(stats.uploaded).toBe(0);
+    expect(stats.uploadErrors).toBe(0);
+  });
+
+  it('uploads frames when ingestUrl is set', async () => {
+    const handle = startSampler({
+      ...baseConfig,
+      ingestUrl: 'http://localhost:3000',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    handle.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    const stats = await handle.done;
+
+    expect(stats.uploaded).toBeGreaterThanOrEqual(2);
+    expect(stats.uploadErrors).toBe(0);
+    expect(mockUploadFrame).toHaveBeenCalled();
+
+    // Verify upload was called with correct ingestUrl
+    for (const call of mockUploadFrame.mock.calls) {
+      expect(call[0]).toBe('http://localhost:3000');
+    }
+  });
+
+  it('continues sampling on upload error', async () => {
+    mockUploadFrame.mockRejectedValueOnce(new Error('network error'));
+
+    const handle = startSampler({
+      ...baseConfig,
+      ingestUrl: 'http://localhost:3000',
+    });
+
+    // Tick 1: upload will fail
+    await vi.advanceTimersByTimeAsync(1000);
+    // Tick 2: upload will succeed
+    await vi.advanceTimersByTimeAsync(1000);
+
+    handle.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    const stats = await handle.done;
+
+    expect(stats.grabbed).toBeGreaterThanOrEqual(2);
+    expect(stats.uploadErrors).toBe(1);
+    expect(stats.uploaded).toBeGreaterThanOrEqual(1);
   });
 });
