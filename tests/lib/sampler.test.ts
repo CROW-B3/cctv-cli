@@ -21,11 +21,11 @@ vi.mock('../../src/lib/uploader', () => ({
   uploadFrame: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
-const mockGrab = vi.mocked(grabFrame);
-const mockSpoolPath = vi.mocked(spoolPath);
+const mockGrab = grabFrame as unknown as ReturnType<typeof vi.fn>;
+const mockSpoolPath = spoolPath as unknown as ReturnType<typeof vi.fn>;
 
 const { uploadFrame: mockUpload } = await import('../../src/lib/uploader');
-const mockUploadFrame = vi.mocked(mockUpload);
+const mockUploadFrame = mockUpload as unknown as ReturnType<typeof vi.fn>;
 
 const baseConfig: SamplerConfig = {
   spoolDir: 'spool',

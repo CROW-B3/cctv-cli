@@ -8,7 +8,7 @@ vi.mock('node:fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
 }));
 
-const mockMkdir = vi.mocked(mkdir);
+const mockMkdir = mkdir as unknown as ReturnType<typeof vi.fn>;
 
 describe('spoolPath', () => {
   const config = { spoolDir: 'spool', storeId: 'store1', cameraId: 'cam1' };

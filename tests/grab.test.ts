@@ -8,7 +8,7 @@ vi.mock('../src/lib/ffmpeg', () => ({
   grabFrame: vi.fn(),
 }));
 
-const mockGrabFrame = vi.mocked(grabFrame);
+const mockGrabFrame = grabFrame as unknown as ReturnType<typeof vi.fn>;
 
 describe('grabAction', () => {
   it('calls grabFrame with parsed options', async () => {
