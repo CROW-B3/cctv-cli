@@ -47,4 +47,4 @@ program
   .option('--tile-height <px>', 'Tile height in pixels', '240')
   .action(compositeAction);
 
-program.parse();
+program.parseAsync();
