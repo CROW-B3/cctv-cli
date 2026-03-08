@@ -25,6 +25,10 @@ program
     'WebSocket URL of the ingest service',
     'ws://localhost:8015/ws'
   )
+  .option(
+    '-k, --api-key <key>',
+    'API key for authentication (appended as ?apiKey= query param)'
+  )
   .action(streamCommand);
 
 program.parse();
