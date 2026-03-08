@@ -8,6 +8,7 @@ import { createWebSocketClient } from '../utils/ws-client';
 interface StreamOptions {
   input?: string;
   url: string;
+  apiKey?: string;
 }
 
 function determineSourceType(inputPath: string): 'video_file' | 'camera' {
@@ -76,11 +77,14 @@ export async function streamCommand(options: StreamOptions): Promise<void> {
   );
   console.log(chalk.blue(`Server: ${chalk.bold(options.url)}\n`));
 
-  const websocketClient = createWebSocketClient(
-    options.url,
-    sourceType,
-    inputSource
-  );
+  let wsUrl = options.url;
+  if (options.apiKey) {
+    const urlObj = new URL(wsUrl);
+    urlObj.searchParams.set('apiKey', options.apiKey);
+    wsUrl = urlObj.toString();
+  }
+
+  const websocketClient = createWebSocketClient(wsUrl, sourceType, inputSource);
 
   websocketClient.onOpen(() => {
     console.log(chalk.green('Connected to ingest service.'));
@@ -93,6 +97,13 @@ export async function streamCommand(options: StreamOptions): Promise<void> {
         websocketClient.send(JSON.stringify({ type, data }));
       }
     );
+
+    if (sourceType === 'video_file') {
+      mediaProcess.on('close', () => {
+        console.log(chalk.dim('\nFile finished. Closing connection...'));
+        websocketClient.close();
+      });
+    }
 
     websocketClient.onClose(() => {
       console.log(chalk.yellow('\nConnection closed.'));

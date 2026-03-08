@@ -88,11 +88,11 @@ function spawnVideoCapture(
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
 
-  let frameBuffer: Buffer = Buffer.alloc(0);
+  let frameBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 
   videoProcess.stdout.on('data', (chunk: Buffer) => {
     frameBuffer = Buffer.concat([frameBuffer, chunk]);
-    frameBuffer = extractJpegFrames(frameBuffer, frame => {
+    frameBuffer = extractJpegFrames(frameBuffer as Buffer, frame => {
       onFrame('video', frame.toString('base64'));
     });
   });
@@ -124,11 +124,11 @@ function spawnAudioCapture(
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
 
-  let audioBuffer: Buffer = Buffer.alloc(0);
+  let audioBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 
   audioProcess.stdout.on('data', (chunk: Buffer) => {
     audioBuffer = Buffer.concat([audioBuffer, chunk]);
-    audioBuffer = extractAudioChunks(audioBuffer, audioChunk => {
+    audioBuffer = extractAudioChunks(audioBuffer as Buffer, audioChunk => {
       onChunk('audio', audioChunk.toString('base64'));
     });
   });

@@ -1,6 +1,9 @@
 import chalk from 'chalk';
 import WebSocket from 'ws';
 
+const MAX_RETRIES = 10;
+const BASE_DELAY_MS = 1000;
+
 interface WebSocketClient {
   send: (data: string) => void;
   close: () => void;
@@ -26,27 +29,67 @@ export function createWebSocketClient(
   sourceName: string
 ): WebSocketClient {
   const connectionUrl = buildConnectionUrl(baseUrl, sourceType, sourceName);
-  const socket = new WebSocket(connectionUrl);
 
+  let socket: WebSocket;
   let openCallback: (() => void) | undefined;
   let messageCallback: ((data: string) => void) | undefined;
   let closeCallback: (() => void) | undefined;
+  let retryCount = 0;
+  let manuallyClosed = false;
 
-  socket.on('open', () => openCallback?.());
-  socket.on('message', (data: WebSocket.Data) =>
-    messageCallback?.(data.toString())
-  );
-  socket.on('close', () => closeCallback?.());
-  socket.on('error', (error: Error) => {
-    console.error(chalk.red('WebSocket error:'), error.message);
-  });
+  function connect() {
+    socket = new WebSocket(connectionUrl);
+
+    socket.on('open', () => {
+      retryCount = 0;
+      openCallback?.();
+    });
+
+    socket.on('message', (data: WebSocket.Data) =>
+      messageCallback?.(data.toString())
+    );
+
+    socket.on('close', code => {
+      if (manuallyClosed) {
+        closeCallback?.();
+        return;
+      }
+
+      if (retryCount >= MAX_RETRIES) {
+        console.error(
+          chalk.red(`Max retries (${MAX_RETRIES}) reached. Giving up.`)
+        );
+        closeCallback?.();
+        return;
+      }
+
+      const jitter = Math.random() * BASE_DELAY_MS;
+      const delay = BASE_DELAY_MS * 2 ** retryCount + jitter;
+      retryCount++;
+      console.warn(
+        chalk.yellow(
+          `Connection closed (code ${code}). Reconnecting in ${Math.round(delay)}ms... (attempt ${retryCount}/${MAX_RETRIES})`
+        )
+      );
+      setTimeout(connect, delay);
+    });
+
+    socket.on('error', (error: Error) => {
+      console.error(chalk.red('WebSocket error:'), error.message);
+    });
+  }
+
+  connect();
 
   return {
     send: (data: string) => {
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(data);
     },
-    close: () => socket.close(),
+    close: () => {
+      manuallyClosed = true;
+      socket.close();
+    },
     onOpen: callback => {
       openCallback = callback;
     },
