@@ -35,8 +35,6 @@ describe('grabFrame', () => {
     expect(mockSpawn).toHaveBeenCalledWith(
       'ffmpeg',
       [
-        '-hwaccel',
-        'auto',
         '-rtsp_transport',
         'tcp',
         '-i',
