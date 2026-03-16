@@ -2,12 +2,19 @@ import type { MotionWatcher } from '../../src/lib/motion';
 import type { SamplerConfig } from '../../src/lib/sampler';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { grabFrame } from '../../src/lib/ffmpeg';
+import { grabBestFrame, grabFrame } from '../../src/lib/ffmpeg';
 import { startSampler } from '../../src/lib/sampler';
 import { spoolPath } from '../../src/lib/spool';
 
 vi.mock('../../src/lib/ffmpeg', () => ({
   grabFrame: vi.fn().mockResolvedValue({ outPath: 'mock.jpg', durationMs: 50 }),
+  grabBestFrame: vi
+    .fn()
+    .mockResolvedValue({
+      outPath: 'mock.jpg',
+      durationMs: 50,
+      framesScanned: 30,
+    }),
 }));
 
 vi.mock('../../src/lib/spool', () => ({
@@ -22,6 +29,7 @@ vi.mock('../../src/lib/uploader', () => ({
   uploadFrame: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
+const mockGrabBest = grabBestFrame as unknown as ReturnType<typeof vi.fn>;
 const mockGrab = grabFrame as unknown as ReturnType<typeof vi.fn>;
 const mockSpoolPath = spoolPath as unknown as ReturnType<typeof vi.fn>;
 
@@ -64,8 +72,8 @@ describe('startSampler', () => {
     expect(stats.grabbed).toBeGreaterThanOrEqual(3);
     expect(stats.errors).toBe(0);
 
-    // Verify grab was called with correct RTSP URL
-    for (const call of mockGrab.mock.calls) {
+    // Verify grabBestFrame was called with correct RTSP URL
+    for (const call of mockGrabBest.mock.calls) {
       expect(call[0].rtspUrl).toBe('rtsp://test');
       expect(call[0].timeoutMs).toBe(5000);
     }
@@ -84,7 +92,7 @@ describe('startSampler', () => {
   });
 
   it('continues on grab error with stats.errors incremented', async () => {
-    mockGrab.mockRejectedValueOnce(new Error('connection refused'));
+    mockGrabBest.mockRejectedValueOnce(new Error('connection refused'));
 
     const handle = startSampler(baseConfig);
 
@@ -246,11 +254,9 @@ describe('startSampler', () => {
       eventCount: 2,
     };
 
-    // First grab succeeds (low-res), second fails (HQ), third succeeds (low-res tick 2)
+    // grabBestFrame always succeeds (low-res), grabFrame controls HQ
     mockGrab
-      .mockResolvedValueOnce({ outPath: 'mock.jpg', durationMs: 50 }) // low tick 1
       .mockRejectedValueOnce(new Error('HQ grab timeout')) // high tick 1
-      .mockResolvedValueOnce({ outPath: 'mock.jpg', durationMs: 50 }) // low tick 2
       .mockResolvedValueOnce({ outPath: 'mock.jpg', durationMs: 50 }); // high tick 2
 
     const handle = startSampler({

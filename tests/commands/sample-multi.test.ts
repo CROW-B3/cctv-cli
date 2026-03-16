@@ -5,6 +5,13 @@ import { startSampler } from '../../src/lib/sampler';
 
 vi.mock('../../src/lib/ffmpeg', () => ({
   grabFrame: vi.fn().mockResolvedValue({ outPath: 'mock.jpg', durationMs: 50 }),
+  grabBestFrame: vi
+    .fn()
+    .mockResolvedValue({
+      outPath: 'mock.jpg',
+      durationMs: 50,
+      framesScanned: 30,
+    }),
 }));
 
 vi.mock('../../src/lib/spool', () => ({
@@ -19,8 +26,10 @@ vi.mock('../../src/lib/uploader', () => ({
   uploadFrame: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
-const { grabFrame: mockGrabFrame } = await import('../../src/lib/ffmpeg');
-const mockGrab = mockGrabFrame as unknown as ReturnType<typeof vi.fn>;
+const { grabBestFrame: mockGrabBestFrame } = await import(
+  '../../src/lib/ffmpeg'
+);
+const mockGrabBest = mockGrabBestFrame as unknown as ReturnType<typeof vi.fn>;
 
 describe('multi-camera sampling', () => {
   beforeEach(() => {
@@ -63,8 +72,8 @@ describe('multi-camera sampling', () => {
     expect(stats1.grabbed).toBeGreaterThanOrEqual(2);
     expect(stats2.grabbed).toBeGreaterThanOrEqual(2);
 
-    // Both RTSP URLs should have been called
-    const urls = mockGrab.mock.calls.map(
+    // Both RTSP URLs should have been called via grabBestFrame
+    const urls = mockGrabBest.mock.calls.map(
       (c: [{ rtspUrl: string }]) => c[0].rtspUrl
     );
     expect(urls).toContain('rtsp://10.0.0.1/stream');
@@ -73,7 +82,7 @@ describe('multi-camera sampling', () => {
 
   it('one camera error does not stop the other', async () => {
     // First call fails (cam1 tick 1), rest succeed
-    mockGrab.mockRejectedValueOnce(new Error('cam1 connection refused'));
+    mockGrabBest.mockRejectedValueOnce(new Error('cam1 connection refused'));
 
     const handle1 = startSampler({
       spoolDir: 'spool',
