@@ -1,3 +1,4 @@
+import type { MotionWatcher } from './motion';
 import type { SpoolConfig } from './spool';
 
 import { grabFrame } from './ffmpeg';
@@ -10,6 +11,7 @@ export interface SamplerConfig extends SpoolConfig {
   fps: number;
   timeoutMs: number;
   ingestUrl?: string;
+  motionWatcher?: MotionWatcher | null;
 }
 
 export interface SamplerStats {
@@ -17,6 +19,8 @@ export interface SamplerStats {
   errors: number;
   uploaded: number;
   uploadErrors: number;
+  hqGrabbed: number;
+  motionEvents: number;
   startedAt: number;
 }
 
@@ -53,6 +57,8 @@ async function runLoop(
     errors: 0,
     uploaded: 0,
     uploadErrors: 0,
+    hqGrabbed: 0,
+    motionEvents: 0,
     startedAt: anchor,
   };
 
@@ -91,6 +97,48 @@ async function runLoop(
           console.warn(`[sampler] upload failed (bucket=${bucket}): ${msg}`);
         }
       }
+
+      // HQ grab when motion detected (best-effort — failures don't count as errors)
+      if (config.motionWatcher?.isHot()) {
+        const hqPath = spoolPath(config, bucket, 'high');
+        try {
+          await grabFrame({
+            rtspUrl: config.rtspUrl,
+            outPath: hqPath,
+            timeoutMs: config.timeoutMs,
+          });
+          stats.hqGrabbed++;
+
+          if (config.ingestUrl) {
+            try {
+              await uploadFrame(
+                config.ingestUrl,
+                {
+                  store_id: config.storeId,
+                  camera_id: config.cameraId,
+                  bucket_sec: bucket,
+                  quality: 'high',
+                  content_type: 'image/jpeg',
+                },
+                hqPath
+              );
+              stats.uploaded++;
+            } catch (uploadErr) {
+              stats.uploadErrors++;
+              const msg =
+                uploadErr instanceof Error
+                  ? uploadErr.message
+                  : String(uploadErr);
+              console.warn(
+                `[sampler] HQ upload failed (bucket=${bucket}): ${msg}`
+              );
+            }
+          }
+        } catch (hqErr) {
+          const msg = hqErr instanceof Error ? hqErr.message : String(hqErr);
+          console.warn(`[sampler] HQ grab failed (bucket=${bucket}): ${msg}`);
+        }
+      }
     } catch (err) {
       stats.errors++;
       const msg = err instanceof Error ? err.message : String(err);
@@ -108,6 +156,7 @@ async function runLoop(
     }
   }
 
+  stats.motionEvents = config.motionWatcher?.eventCount ?? 0;
   return stats;
 }
 

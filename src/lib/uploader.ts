@@ -1,8 +1,9 @@
 import type { FrameMeta } from './types';
 
 import { readFile } from 'node:fs/promises';
+import process from 'node:process';
 
-const AUTH_TOKEN = 'devtoken';
+const UPLOAD_TIMEOUT_MS = 10_000;
 
 export interface UploadResult {
   ok: boolean;
@@ -11,12 +12,14 @@ export interface UploadResult {
 /**
  * Upload a frame to the ingest service.
  * Reads the file from the spool path, builds multipart FormData, and POSTs.
+ * Auth token read from CCTV_AUTH_TOKEN env var (falls back to "devtoken" in dev).
  */
 export async function uploadFrame(
   ingestUrl: string,
   meta: FrameMeta,
   filePath: string
 ): Promise<UploadResult> {
+  const authToken = process.env.CCTV_AUTH_TOKEN ?? 'devtoken';
   const fileBytes = await readFile(filePath);
 
   const formData = new FormData();
@@ -31,8 +34,9 @@ export async function uploadFrame(
 
   const res = await fetch(`${ingestUrl}/frame`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    headers: { Authorization: `Bearer ${authToken}` },
     body: formData,
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   });
 
   if (!res.ok) {

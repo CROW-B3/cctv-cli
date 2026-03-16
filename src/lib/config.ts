@@ -16,45 +16,52 @@ const GridSchema = z.object({
 const CameraSchema = z.object({
   id: z.string().min(1, 'Camera id must not be empty'),
   rtsp: z.string().min(1, 'Camera rtsp URL must not be empty'),
+  onvif_url: z.string().optional(),
   grid_position: GridPositionSchema.optional(),
 });
 
-const StoreConfigSchema = z
-  .object({
-    store_id: z.string().min(1, 'store_id must not be empty'),
-    grid: GridSchema.optional(),
-    cameras: z.array(CameraSchema).min(1, 'At least one camera is required'),
-  })
-  .check(ctx => {
-    const { grid, cameras } = ctx.value;
-    if (!grid) return;
+const MotionConfigSchema = z.object({
+  enabled: z.boolean(),
+  ttl_seconds: z.number().min(0.1).max(30).default(2),
+});
 
-    const seen = new Set<string>();
-    for (const cam of cameras) {
-      if (!cam.grid_position) {
-        ctx.issues.push({
-          message: `Camera "${cam.id}" missing grid_position when grid is defined`,
-          path: ['cameras'],
-        });
-        continue;
-      }
-      const { row, col } = cam.grid_position;
-      if (row >= grid.rows || col >= grid.cols) {
-        ctx.issues.push({
-          message: `Camera "${cam.id}" grid_position (${row},${col}) out of bounds for ${grid.rows}x${grid.cols} grid`,
-          path: ['cameras'],
-        });
-      }
-      const key = `${row},${col}`;
-      if (seen.has(key)) {
-        ctx.issues.push({
-          message: `Duplicate grid_position (${row},${col}) for camera "${cam.id}"`,
-          path: ['cameras'],
-        });
-      }
-      seen.add(key);
+const BaseStoreConfigSchema = z.object({
+  store_id: z.string().min(1, 'store_id must not be empty'),
+  motion: MotionConfigSchema.optional(),
+  grid: GridSchema.optional(),
+  cameras: z.array(CameraSchema).min(1, 'At least one camera is required'),
+});
+
+function validateGrid(
+  val: z.infer<typeof BaseStoreConfigSchema>
+): string | null {
+  const { grid, cameras } = val;
+  if (!grid) return null;
+
+  const seen = new Set<string>();
+  for (const cam of cameras) {
+    if (!cam.grid_position) {
+      return `Camera "${cam.id}" missing grid_position when grid is defined`;
     }
-  });
+    const { row, col } = cam.grid_position;
+    if (row >= grid.rows || col >= grid.cols) {
+      return `Camera "${cam.id}" grid_position (${row},${col}) out of bounds for ${grid.rows}x${grid.cols} grid`;
+    }
+    const key = `${row},${col}`;
+    if (seen.has(key)) {
+      return `Duplicate grid_position (${row},${col}) for camera "${cam.id}"`;
+    }
+    seen.add(key);
+  }
+  return null;
+}
+
+const StoreConfigSchema = BaseStoreConfigSchema.superRefine((val, ctx) => {
+  const err = validateGrid(val);
+  if (err) {
+    ctx.addIssue({ code: 'custom', message: err, path: ['cameras'] });
+  }
+});
 
 export type GridPosition = z.infer<typeof GridPositionSchema>;
 export type Grid = z.infer<typeof GridSchema>;
