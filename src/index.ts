@@ -2,6 +2,7 @@
 import { program } from 'commander';
 import { compositeAction } from './commands/composite';
 import { grabAction } from './commands/grab';
+import { processAction } from './commands/process';
 import { sampleAction } from './commands/sample';
 
 program
@@ -46,5 +47,22 @@ program
   .option('--tile-width <px>', 'Tile width in pixels', '320')
   .option('--tile-height <px>', 'Tile height in pixels', '240')
   .action(compositeAction);
+
+program
+  .command('process')
+  .description(
+    'Process a local video file: extract frames and optionally upload'
+  )
+  .requiredOption(
+    '--file <path>',
+    'Local video file path (MP4, AVI, MKV, MOV, WebM)'
+  )
+  .requiredOption('--store <id>', 'Store identifier')
+  .requiredOption('--camera <id>', 'Camera identifier')
+  .option('--spool <path>', 'Spool directory root', './spool')
+  .option('--fps <n>', 'Frames per second to extract (0 < fps ≤ 30)', '1')
+  .option('--timeout <ms>', 'Per-upload timeout in milliseconds', '10000')
+  .option('--ingest <url>', 'Ingest service URL (e.g. http://localhost:8015)')
+  .action(processAction);
 
 program.parseAsync();
